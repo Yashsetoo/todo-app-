@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>TaskFlow — Todo Manager</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0d0d0f;
+      --surface:   #16161a;
+      --card:      #1e1e24;
+      --border:    #2a2a34;
+      --accent:    #6c63ff;
+      --accent2:   #ff6584;
+      --green:     #3ecf8e;
+      --yellow:    #f5a623;
+      --red:       #ff4d6d;
+      --text:      #e8e8f0;
+      --muted:     #6b6b80;
+      --radius:    14px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      min-height: 100vh;
+      padding: 0 0 60px;
+    }
+
+    /* ── Header ── */
+    header {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      padding: 48px 24px 36px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    header::before {
+      content: '';
+      position: absolute;
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, rgba(108,99,255,0.15) 0%, transparent 70%);
+      top: -200px; left: 50%; transform: translateX(-50%);
+      pointer-events: none;
+    }
+    header h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(2rem, 5vw, 3.2rem);
+      font-weight: 800;
+      letter-spacing: -1px;
+      background: linear-gradient(90deg, #fff 0%, #a29bfe 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    header p {
+      color: var(--muted);
+      margin-top: 6px;
+      font-size: 0.95rem;
+      font-weight: 300;
+    }
+
+    /* ── Stats ── */
+    .stats {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 28px;
+      flex-wrap: wrap;
+    }
+    .stat {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 50px;
+      padding: 8px 20px;
+      font-size: 0.82rem;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .stat span { font-weight: 700; font-size: 1rem; }
+    .stat.total span  { color: var(--accent); }
+    .stat.active span { color: var(--yellow); }
+    .stat.done span   { color: var(--green); }
+
+    /* ── Main container ── */
+    .container { max-width: 720px; margin: 0 auto; padding: 32px 20px 0; }
+
+    /* ── Add Form ── */
+    .add-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 28px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      animation: slideDown 0.4s ease;
+    }
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .add-card h2 {
+      font-family: 'Syne', sans-serif;
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .form-row { display: flex; gap: 10px; margin-bottom: 12px; }
+    input[type="text"], textarea, select {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      padding: 12px 16px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s;
+      width: 100%;
+    }
+    input[type="text"]:focus, textarea:focus, select:focus {
+      border-color: var(--accent);
+    }
+    textarea { resize: none; height: 72px; }
+    select { cursor: pointer; }
+    select option { background: var(--card); }
+    .form-bottom { display: flex; gap: 10px; align-items: flex-start; }
+    .form-bottom select { max-width: 160px; }
+
+    /* Priority pill colors in select */
+    .priority-low    { color: var(--green); }
+    .priority-medium { color: var(--yellow); }
+    .priority-high   { color: var(--red); }
+
+    .btn-add {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 12px 28px;
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .btn-add:hover { background: #5a52e0; transform: translateY(-1px); }
+    .btn-add:active { transform: translateY(0); }
+
+    /* ── Filters ── */
+    .filters {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .filter-btn {
+      padding: 7px 18px;
+      border-radius: 50px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-decoration: none;
+    }
+    .filter-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .filter-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .spacer { flex: 1; }
+    .btn-clear {
+      padding: 7px 16px;
+      border-radius: 50px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      font-size: 0.82rem;
+      cursor: pointer;
+      font-family: 'DM Sans', sans-serif;
+      transition: all 0.2s;
+    }
+    .btn-clear:hover { border-color: var(--red); color: var(--red); }
+
+    /* ── Todo list ── */
+    .todo-list { display: flex; flex-direction: column; gap: 10px; }
+
+    .todo-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      transition: border-color 0.2s, box-shadow 0.2s, opacity 0.3s;
+      animation: fadeIn 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .todo-item::before {
+      content: '';
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 4px;
+      border-radius: 4px 0 0 4px;
+    }
+    .todo-item.priority-low::before   { background: var(--green); }
+    .todo-item.priority-medium::before { background: var(--yellow); }
+    .todo-item.priority-high::before  { background: var(--red); }
+    .todo-item:hover { border-color: #3a3a48; box-shadow: 0 4px 20px rgba(0,0,0,0.25); }
+    .todo-item.done { opacity: 0.55; }
+
+    /* Checkbox */
+    .check-wrap { padding-top: 2px; flex-shrink: 0; }
+    .check-wrap input[type="checkbox"] { display: none; }
+    .check-wrap label {
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      border: 2px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+    .check-wrap label:hover { border-color: var(--green); }
+    .check-wrap input:checked + label {
+      background: var(--green);
+      border-color: var(--green);
+    }
+    .check-wrap input:checked + label::after {
+      content: '✓';
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    /* Todo content */
+    .todo-content { flex: 1; min-width: 0; }
+    .todo-title {
+      font-family: 'Syne', sans-serif;
+      font-weight: 600;
+      font-size: 1rem;
+      line-height: 1.4;
+      transition: text-decoration 0.2s;
+    }
+    .done .todo-title { text-decoration: line-through; color: var(--muted); }
+    .todo-desc {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-top: 4px;
+      line-height: 1.5;
+    }
+    .todo-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+    .priority-tag {
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      padding: 2px 10px;
+      border-radius: 50px;
+    }
+    .priority-tag.low    { background: rgba(62,207,142,0.15); color: var(--green); }
+    .priority-tag.medium { background: rgba(245,166,35,0.15);  color: var(--yellow); }
+    .priority-tag.high   { background: rgba(255,77,109,0.15);  color: var(--red); }
+    .todo-date { font-size: 0.75rem; color: var(--muted); }
+
+    /* Actions */
+    .todo-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .btn-icon {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--muted);
+      width: 34px; height: 34px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+    .btn-icon:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-icon.del:hover { border-color: var(--red); color: var(--red); }
+
+    /* ── Edit modal ── */
+    .modal-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(4px);
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 28px;
+      width: 100%;
+      max-width: 480px;
+      margin: 20px;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+      animation: popIn 0.25s ease;
+    }
+    @keyframes popIn {
+      from { opacity: 0; transform: scale(0.95); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+    .modal h3 {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.2rem;
+      margin-bottom: 20px;
+    }
+    .modal-actions { display: flex; gap: 10px; margin-top: 16px; justify-content: flex-end; }
+    .btn-save {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 10px 24px;
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .btn-cancel {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 20px;
+      font-family: 'DM Sans', sans-serif;
+      cursor: pointer;
+    }
+    .form-group { margin-bottom: 12px; }
+    .form-group label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; }
+
+    /* ── Empty state ── */
+    .empty {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--muted);
+    }
+    .empty .emoji { font-size: 3rem; display: block; margin-bottom: 12px; }
+    .empty p { font-size: 0.95rem; }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<header>
+  <h1>⚡ TaskFlow</h1>
+  <p>Stay focused. Get things done.</p>
+  <div class="stats">
+    <div class="stat total">  <span>{{ total }}</span> Total </div>
+    <div class="stat active"> <span>{{ active }}</span> Active </div>
+    <div class="stat done">   <span>{{ completed }}</span> Done </div>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- Add Task Form -->
+  <div class="add-card">
+    <h2>+ New Task</h2>
+    <form action="/add" method="POST">
+      <div class="form-row">
+        <input type="text" name="title" placeholder="What needs to be done?" required/>
+      </div>
+      <div class="form-row">
+        <textarea name="description" placeholder="Add a description (optional)…"></textarea>
+      </div>
+      <div class="form-bottom">
+        <select name="priority">
+          <option value="low">🟢 Low Priority</option>
+          <option value="medium" selected>🟡 Medium Priority</option>
+          <option value="high">🔴 High Priority</option>
+        </select>
+        <button type="submit" class="btn-add">Add Task</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Filters -->
+  <div class="filters">
+    <a href="/?filter=all"       class="filter-btn {% if filter_by == 'all' %}active{% endif %}">All</a>
+    <a href="/?filter=active"    class="filter-btn {% if filter_by == 'active' %}active{% endif %}">Active</a>
+    <a href="/?filter=completed" class="filter-btn {% if filter_by == 'completed' %}active{% endif %}">Completed</a>
+    <div class="spacer"></div>
+    {% if completed > 0 %}
+    <form action="/clear-completed" method="POST" style="display:inline;">
+      <button type="submit" class="btn-clear">Clear Completed</button>
+    </form>
+    {% endif %}
+  </div>
+
+  <!-- Todo List -->
+  <div class="todo-list">
+    {% if todos %}
+      {% for todo in todos %}
+      <div class="todo-item priority-{{ todo.priority }} {% if todo.completed %}done{% endif %}" id="item-{{ todo.id }}">
+
+        <!-- Checkbox -->
+        <div class="check-wrap">
+          <form action="/toggle/{{ todo.id }}" method="POST">
+            <input type="checkbox" id="check-{{ todo.id }}" {% if todo.completed %}checked{% endif %}
+                   onchange="this.form.submit()"/>
+            <label for="check-{{ todo.id }}"></label>
+          </form>
+        </div>
+
+        <!-- Content -->
+        <div class="todo-content">
+          <div class="todo-title">{{ todo.title }}</div>
+          {% if todo.description %}
+          <div class="todo-desc">{{ todo.description }}</div>
+          {% endif %}
+          <div class="todo-meta">
+            <span class="priority-tag {{ todo.priority }}">{{ todo.priority }}</span>
+            <span class="todo-date">{{ todo.created_at.strftime('%b %d, %Y') }}</span>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="todo-actions">
+          <button class="btn-icon" onclick="openEdit({{ todo.id }}, '{{ todo.title | e }}', '{{ todo.description | e }}', '{{ todo.priority }}')" title="Edit">✏️</button>
+          <form action="/delete/{{ todo.id }}" method="POST" onsubmit="return confirmDelete(event, {{ todo.id }})">
+            <button type="submit" class="btn-icon del" title="Delete">🗑️</button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty">
+        <span class="emoji">🎉</span>
+        <p>No tasks here! Add one above to get started.</p>
+      </div>
+    {% endif %}
+  </div>
+
+</div>
+
+<!-- Edit Modal -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
+    <h3>✏️ Edit Task</h3>
+    <form id="editForm" method="POST">
+      <div class="form-group">
+        <label>Title</label>
+        <input type="text" name="title" id="editTitle" required/>
+      </div>
+      <div class="form-group">
+        <label>Description</label>
+        <textarea name="description" id="editDesc"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Priority</label>
+        <select name="priority" id="editPriority">
+          <option value="low">🟢 Low</option>
+          <option value="medium">🟡 Medium</option>
+          <option value="high">🔴 High</option>
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-cancel" onclick="closeEdit()">Cancel</button>
+        <button type="submit" class="btn-save">Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  function openEdit(id, title, desc, priority) {
+    document.getElementById('editForm').action = '/edit/' + id;
+    document.getElementById('editTitle').value = title;
+    document.getElementById('editDesc').value = desc;
+    document.getElementById('editPriority').value = priority;
+    document.getElementById('editModal').classList.add('open');
+  }
+  function closeEdit() {
+    document.getElementById('editModal').classList.remove('open');
+  }
+  document.getElementById('editModal').addEventListener('click', function(e) {
+    if (e.target === this) closeEdit();
+  });
+  function confirmDelete(e, id) {
+    if (!confirm('Delete this task?')) { e.preventDefault(); return false; }
+    return true;
+  }
+</script>
+</body>
+</html>

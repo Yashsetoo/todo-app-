@@ -12,4 +12,6 @@ COPY . .
 # Expose the port the app runs on 
 EXPOSE 8000 
 # Command to run the app using gunicorn (production server) 
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--timeout", "600", "app:app"]
+# Command to run the app using gunicorn (production server)
+# App Service forwards external traffic to 8080, so we bind gunicorn to 8080.
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "app:app"]

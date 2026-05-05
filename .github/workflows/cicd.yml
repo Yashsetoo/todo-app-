@@ -29,7 +29,7 @@ jobs:
         with:
           subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           resourceGroupName: 'rg-myapp-cicd'
-          template: ./main.bicep
+          template: main.bicep
           # This 'webAppName' must match the 'param webAppName' in Bicep
           parameters: webAppName=yash-python-app
 
@@ -117,12 +117,14 @@ jobs:
     name: Deploy to Azure App Service
     runs-on: ubuntu-latest
     needs: build-and-push
-    if: github.event_name == 'push'
-    
     steps:
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
-          app-name: 'yash-python-app' 
-          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          app-name: 'yash-python-app'
           images: '${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest'

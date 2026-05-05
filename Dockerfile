@@ -10,7 +10,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application code 
 COPY . . 
 # Expose the port the app runs on 
-EXPOSE 8000 
+EXPOSE 8080 
 # Command to run the app using gunicorn (production server) 
 # Command to run the app using gunicorn (production server)
 # App Service forwards external traffic to 8080, so we bind gunicorn to 8080.

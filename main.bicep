@@ -1,12 +1,12 @@
-param webAppName string 
-param location string = 'centralus'
+param webAppName string
+param location string = resourceGroup().location
+param acrLoginServer string
+param imageName string
+param acrUsername string
 
 @secure()
 param acrPassword string
-param acrUsername string = 'yashprojectreg2026'
 
-
-// Create the App Service Plan
 resource appServicePlan 'Microsoft.Web/serverfarms@2022-03-01' = {
   name: '${webAppName}-plan'
   location: location
@@ -19,14 +19,14 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2022-03-01' = {
   }
 }
 
-// Create the Web App
 resource webApp 'Microsoft.Web/sites@2022-03-01' = {
   name: webAppName
   location: location
   properties: {
-    serverFarmId: appServicePlan.id // This links the app to the plan
+    serverFarmId: appServicePlan.id
     siteConfig: {
-      linuxFxVersion: 'DOCKER|yashprojectreg2026.azurecr.io/myapp:latest'
+      linuxFxVersion: 'DOCKER|${acrLoginServer}/${imageName}:latest'
+      alwaysOn: true
       appSettings: [
         {
           name: 'WEBSITES_PORT'
@@ -34,7 +34,7 @@ resource webApp 'Microsoft.Web/sites@2022-03-01' = {
         }
         {
           name: 'DOCKER_REGISTRY_SERVER_URL'
-          value: 'https://yashprojectreg2026.azurecr.io'
+          value: 'https://${acrLoginServer}'
         }
         {
           name: 'DOCKER_REGISTRY_SERVER_USERNAME'

@@ -1,131 +1,179 @@
-name: CI/CD Pipeline
+name: Build Once Deploy Many
+
 on:
   push:
     branches:
+      - develop
+      - main
+  pull_request:
+    branches:
+      - develop
       - main
   workflow_dispatch:
 
-env: 
-  ACR_LOGIN_SERVER: yashprojectreg2026.azurecr.io 
-  IMAGE_NAME: myapp 
+permissions:
+  contents: read
 
-jobs: 
-  # ───────────────────────────────────────────── 
-  # JOB 1: Provision Infrastructure
-  # Recreates the App Service if it was deleted
-  # ───────────────────────────────────────────── 
-  provision:
-    name: Provision Infrastructure
+env:
+  RESOURCE_GROUP: rg-myapp-cicd
+  LOCATION: centralus
+  ACR_NAME: yashprojectreg2026
+  ACR_LOGIN_SERVER: yashprojectreg2026.azurecr.io
+  IMAGE_NAME: myapp
+  DEV_WEBAPP_NAME: yash-python-app-dev
+  PROD_WEBAPP_NAME: yash-python-app-prod
+
+jobs:
+  test:
+    name: Test
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Azure Login
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short
+
+  provision:
+    name: Provision Azure App Services
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name != 'pull_request'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Deploy Bicep File
-        uses: azure/arm-deploy@v1
+      - name: Ensure resource group exists
+        run: |
+          az group create \
+            --name "$RESOURCE_GROUP" \
+            --location "$LOCATION"
+
+      - name: Provision Dev app
+        uses: azure/arm-deploy@v2
         with:
           subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          resourceGroupName: 'rg-myapp-cicd'
+          resourceGroupName: ${{ env.RESOURCE_GROUP }}
           template: main.bicep
-          # This 'webAppName' must match the 'param webAppName' in Bicep
-          parameters: webAppName=yash-python-app acrPassword=${{ secrets.ACR_PASSWORD }}
+          parameters: >
+            webAppName=${{ env.DEV_WEBAPP_NAME }}
+            acrLoginServer=${{ env.ACR_LOGIN_SERVER }}
+            acrUsername=${{ secrets.ACR_USERNAME }}
+            acrPassword=${{ secrets.ACR_PASSWORD }}
+            imageName=${{ env.IMAGE_NAME }}
 
-  # ───────────────────────────────────────────── 
-  # JOB 2: Run tests 
-  # ───────────────────────────────────────────── 
-  test: 
-    name: Run Tests 
-    runs-on: ubuntu-latest 
-    needs: provision  # Ensure infra exists before testing
- 
-    steps: 
-      - name: Checkout code 
-        uses: actions/checkout@v4 
- 
-      - name: Set up Python 
-        uses: actions/setup-python@v5 
-        with: 
-          python-version: "3.11" 
- 
-      - name: Cache pip dependencies 
-        uses: actions/cache@v4 
-        with: 
-          path: ~/.cache/pip 
-          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }} 
-          restore-keys: | 
-            ${{ runner.os }}-pip- 
- 
-      - name: Install dependencies 
-        run: | 
-          python -m pip install --upgrade pip 
-          pip install -r requirements.txt 
- 
-      - name: Run pytest 
-        run: | 
-          pytest tests/ -v --tb=short 
- 
-  # ───────────────────────────────────────────── 
-  # JOB 3: Build Docker image and push to ACR 
-  # ───────────────────────────────────────────── 
-  build-and-push: 
-    name: Build and Push to ACR 
-    runs-on: ubuntu-latest 
-    needs: test 
-    if: github.event_name == 'push' 
- 
-    steps: 
-      - name: Checkout code 
-        uses: actions/checkout@v4 
- 
-      - name: Log in to ACR 
-        uses: docker/login-action@v3 
-        with: 
-          registry: ${{ env.ACR_LOGIN_SERVER }}
-          username: yashprojectreg2026 
-          # RECOMMENDED: Move password to GitHub Secrets as ACR_PASSWORD
-          password: ${{ secrets.ACR_PASSWORD }} 
- 
-      - name: Set up Docker Buildx 
-        uses: docker/setup-buildx-action@v3 
- 
-      - name: Extract Docker metadata 
-        id: meta 
-        uses: docker/metadata-action@v5 
-        with: 
-          images: ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }} 
-          tags: | 
-            type=raw,value=latest 
-            type=sha,prefix=,format=short 
- 
-      - name: Build and push Docker image 
-        uses: docker/build-push-action@v5 
-        with: 
-          context: . 
-          push: true 
-          tags: ${{ steps.meta.outputs.tags }} 
-          labels: ${{ steps.meta.outputs.labels }} 
-          cache-from: type=gha 
-          cache-to: type=gha,mode=max 
- 
-  # ───────────────────────────────────────────── 
-  # JOB 4: Deploy to Azure App Service
-  # ───────────────────────────────────────────── 
-  deploy:
-    name: Deploy to Azure App Service
+      - name: Provision Prod app
+        uses: azure/arm-deploy@v2
+        with:
+          subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          resourceGroupName: ${{ env.RESOURCE_GROUP }}
+          template: main.bicep
+          parameters: >
+            webAppName=${{ env.PROD_WEBAPP_NAME }}
+            acrLoginServer=${{ env.ACR_LOGIN_SERVER }}
+            acrUsername=${{ secrets.ACR_USERNAME }}
+            acrPassword=${{ secrets.ACR_PASSWORD }}
+            imageName=${{ env.IMAGE_NAME }}
+
+  build:
+    name: Build Once
     runs-on: ubuntu-latest
-    needs: build-and-push
+    needs: provision
+    if: github.event_name != 'pull_request'
+
+    outputs:
+      image-uri: ${{ steps.image.outputs.uri }}
+
     steps:
-      - name: Azure Login
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set image URI
+        id: image
+        run: |
+          IMAGE_URI="${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${GITHUB_SHA}"
+          echo "uri=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
+
+      - name: Azure login
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Deploy to Azure Web App
+      - name: Login to Azure Container Registry
+        run: az acr login --name "$ACR_NAME"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.image.outputs.uri }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-dev:
+    name: Deploy Dev
+    runs-on: ubuntu-latest
+    needs: build
+    environment: dev
+
+    steps:
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy same image to Dev
         uses: azure/webapps-deploy@v3
         with:
-          app-name: 'yash-python-app'
-          images: '${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest'
+          app-name: ${{ env.DEV_WEBAPP_NAME }}
+          images: ${{ needs.build.outputs.image-uri }}
+
+  deploy-prod:
+    name: Deploy Prod
+    runs-on: ubuntu-latest
+    needs:
+      - build
+      - deploy-dev
+    if: github.ref == 'refs/heads/main'
+    environment: prod
+
+    steps:
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy same image to Prod
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.PROD_WEBAPP_NAME }}
+          images: ${{ needs.build.outputs.image-uri }}

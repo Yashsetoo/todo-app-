@@ -10,3 +10,7 @@ __pycache__/
 venv/ 
 .venv/ 
 todos.db
+.pytest_cache/
+graphify-out/
+.agent/
+.cursor/

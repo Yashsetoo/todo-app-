@@ -53,15 +53,26 @@ jobs:
       - name: Run tests
         run: pytest tests/ -v --tb=short
 
-  provision:
-    name: Provision Azure App Services
+  build:
+    name: Build Once
     runs-on: ubuntu-latest
     needs: test
     if: github.event_name != 'pull_request'
 
+    outputs:
+      image-uri: ${{ steps.image.outputs.uri }}
+      image-tag: ${{ steps.image.outputs.tag }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set image URI
+        id: image
+        run: |
+          IMAGE_URI="${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${GITHUB_SHA}"
+          echo "uri=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
+          echo "tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: Azure login
         uses: azure/login@v2
@@ -73,56 +84,6 @@ jobs:
           az group create \
             --name "$RESOURCE_GROUP" \
             --location "$LOCATION"
-
-      - name: Provision Dev app
-        uses: azure/arm-deploy@v2
-        with:
-          subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          resourceGroupName: ${{ env.RESOURCE_GROUP }}
-          template: main.bicep
-          parameters: >
-            webAppName=${{ env.DEV_WEBAPP_NAME }}
-            acrLoginServer=${{ env.ACR_LOGIN_SERVER }}
-            acrUsername=${{ secrets.ACR_USERNAME }}
-            acrPassword=${{ secrets.ACR_PASSWORD }}
-            imageName=${{ env.IMAGE_NAME }}
-
-      - name: Provision Prod app
-        uses: azure/arm-deploy@v2
-        with:
-          subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          resourceGroupName: ${{ env.RESOURCE_GROUP }}
-          template: main.bicep
-          parameters: >
-            webAppName=${{ env.PROD_WEBAPP_NAME }}
-            acrLoginServer=${{ env.ACR_LOGIN_SERVER }}
-            acrUsername=${{ secrets.ACR_USERNAME }}
-            acrPassword=${{ secrets.ACR_PASSWORD }}
-            imageName=${{ env.IMAGE_NAME }}
-
-  build:
-    name: Build Once
-    runs-on: ubuntu-latest
-    needs: provision
-    if: github.event_name != 'pull_request'
-
-    outputs:
-      image-uri: ${{ steps.image.outputs.uri }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set image URI
-        id: image
-        run: |
-          IMAGE_URI="${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${GITHUB_SHA}"
-          echo "uri=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
-
-      - name: Azure login
-        uses: azure/login@v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Login to Azure Container Registry
         uses: docker/login-action@v3
@@ -158,26 +119,18 @@ jobs:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Deploy same image to Dev
-        run: |
-          az webapp config appsettings set \
-            --name "$DEV_WEBAPP_NAME" \
-            --resource-group "$RESOURCE_GROUP" \
-            --settings \
-              WEBSITES_PORT=8080 \
-              DOCKER_REGISTRY_SERVER_URL="https://${ACR_LOGIN_SERVER}" \
-              DOCKER_REGISTRY_SERVER_USERNAME="${{ secrets.ACR_USERNAME }}" \
-              DOCKER_REGISTRY_SERVER_PASSWORD="${{ secrets.ACR_PASSWORD }}"
-          DEV_WEBAPP_ID=$(az webapp show \
-            --name "$DEV_WEBAPP_NAME" \
-            --resource-group "$RESOURCE_GROUP" \
-            --query id \
-            --output tsv)
-          az resource update \
-            --ids "${DEV_WEBAPP_ID}/config/web" \
-            --set properties.linuxFxVersion="DOCKER|${{ needs.build.outputs.image-uri }}"
-          az webapp restart \
-            --name "$DEV_WEBAPP_NAME" \
-            --resource-group "$RESOURCE_GROUP"
+        uses: azure/arm-deploy@v2
+        with:
+          subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          resourceGroupName: ${{ env.RESOURCE_GROUP }}
+          template: main.bicep
+          parameters: >
+            webAppName=${{ env.DEV_WEBAPP_NAME }}
+            acrLoginServer=${{ env.ACR_LOGIN_SERVER }}
+            acrUsername=${{ secrets.ACR_USERNAME }}
+            acrPassword=${{ secrets.ACR_PASSWORD }}
+            imageName=${{ env.IMAGE_NAME }}
+            imageTag=${{ needs.build.outputs.image-tag }}
 
   deploy-prod:
     name: Deploy Prod
@@ -195,23 +148,15 @@ jobs:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Deploy same image to Prod
-        run: |
-          az webapp config appsettings set \
-            --name "$PROD_WEBAPP_NAME" \
-            --resource-group "$RESOURCE_GROUP" \
-            --settings \
-              WEBSITES_PORT=8080 \
-              DOCKER_REGISTRY_SERVER_URL="https://${ACR_LOGIN_SERVER}" \
-              DOCKER_REGISTRY_SERVER_USERNAME="${{ secrets.ACR_USERNAME }}" \
-              DOCKER_REGISTRY_SERVER_PASSWORD="${{ secrets.ACR_PASSWORD }}"
-          PROD_WEBAPP_ID=$(az webapp show \
-            --name "$PROD_WEBAPP_NAME" \
-            --resource-group "$RESOURCE_GROUP" \
-            --query id \
-            --output tsv)
-          az resource update \
-            --ids "${PROD_WEBAPP_ID}/config/web" \
-            --set properties.linuxFxVersion="DOCKER|${{ needs.build.outputs.image-uri }}"
-          az webapp restart \
-            --name "$PROD_WEBAPP_NAME" \
-            --resource-group "$RESOURCE_GROUP"
+        uses: azure/arm-deploy@v2
+        with:
+          subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          resourceGroupName: ${{ env.RESOURCE_GROUP }}
+          template: main.bicep
+          parameters: >
+            webAppName=${{ env.PROD_WEBAPP_NAME }}
+            acrLoginServer=${{ env.ACR_LOGIN_SERVER }}
+            acrUsername=${{ secrets.ACR_USERNAME }}
+            acrPassword=${{ secrets.ACR_PASSWORD }}
+            imageName=${{ env.IMAGE_NAME }}
+            imageTag=${{ needs.build.outputs.image-tag }}

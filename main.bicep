@@ -2,6 +2,7 @@ param webAppName string
 param location string = resourceGroup().location
 param acrLoginServer string
 param imageName string
+param imageTag string = 'latest'
 param acrUsername string
 
 @secure()
@@ -26,7 +27,7 @@ resource webApp 'Microsoft.Web/sites@2022-03-01' = {
   properties: {
     serverFarmId: appServicePlan.id
     siteConfig: {
-      linuxFxVersion: 'DOCKER|${acrLoginServer}/${imageName}:latest'
+      linuxFxVersion: 'DOCKER|${acrLoginServer}/${imageName}:${imageTag}'
       alwaysOn: true
       appSettings: [
         {

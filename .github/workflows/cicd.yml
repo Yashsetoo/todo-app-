@@ -139,7 +139,9 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ steps.image.outputs.uri }}
+          tags: |
+            ${{ steps.image.outputs.uri }}
+            ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -156,10 +158,14 @@ jobs:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Deploy same image to Dev
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: ${{ env.DEV_WEBAPP_NAME }}
-          images: ${{ needs.build.outputs.image-uri }}
+        run: |
+          az webapp config container set \
+            --name "$DEV_WEBAPP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --docker-custom-image-name "${{ needs.build.outputs.image-uri }}" \
+            --docker-registry-server-url "https://${ACR_LOGIN_SERVER}" \
+            --docker-registry-server-user "${{ secrets.ACR_USERNAME }}" \
+            --docker-registry-server-password "${{ secrets.ACR_PASSWORD }}"
 
   deploy-prod:
     name: Deploy Prod
@@ -177,7 +183,11 @@ jobs:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Deploy same image to Prod
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: ${{ env.PROD_WEBAPP_NAME }}
-          images: ${{ needs.build.outputs.image-uri }}
+        run: |
+          az webapp config container set \
+            --name "$PROD_WEBAPP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --docker-custom-image-name "${{ needs.build.outputs.image-uri }}" \
+            --docker-registry-server-url "https://${ACR_LOGIN_SERVER}" \
+            --docker-registry-server-user "${{ secrets.ACR_USERNAME }}" \
+            --docker-registry-server-password "${{ secrets.ACR_PASSWORD }}"

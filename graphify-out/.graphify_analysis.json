@@ -1,0 +1,89 @@
+{
+  "communities": {
+    "0": [
+      "tests_test_app_client",
+      "tests_test_app_py",
+      "tests_test_app_rationale_17",
+      "tests_test_app_rationale_22",
+      "tests_test_app_rationale_31",
+      "tests_test_app_test_add_todo",
+      "tests_test_app_test_add_todo_empty_title",
+      "tests_test_app_test_index_loads"
+    ],
+    "1": [
+      "app_py",
+      "task1_app_clear_completed",
+      "task1_app_delete",
+      "task1_app_edit",
+      "task1_app_index",
+      "task1_app_toggle"
+    ],
+    "2": [
+      "task1_app_add",
+      "task1_app_todo",
+      "task1_app_todo_to_dict"
+    ]
+  },
+  "cohesion": {
+    "0": 0.25,
+    "1": 0.4,
+    "2": 0.67
+  },
+  "gods": [
+    {
+      "id": "task1_app_todo",
+      "label": "Todo",
+      "degree": 3
+    },
+    {
+      "id": "task1_app_add",
+      "label": "add()",
+      "degree": 2
+    },
+    {
+      "id": "task1_app_delete",
+      "label": "delete()",
+      "degree": 2
+    },
+    {
+      "id": "task1_app_clear_completed",
+      "label": "clear_completed()",
+      "degree": 2
+    },
+    {
+      "id": "tests_test_app_test_index_loads",
+      "label": "test_index_loads()",
+      "degree": 2
+    },
+    {
+      "id": "tests_test_app_test_add_todo",
+      "label": "test_add_todo()",
+      "degree": 2
+    },
+    {
+      "id": "tests_test_app_test_add_todo_empty_title",
+      "label": "test_add_todo_empty_title()",
+      "degree": 2
+    },
+    {
+      "id": "tests_test_app_rationale_17",
+      "label": "Home page should return 200.",
+      "degree": 1
+    },
+    {
+      "id": "tests_test_app_rationale_22",
+      "label": "Adding a todo should redirect back to index.",
+      "degree": 1
+    },
+    {
+      "id": "tests_test_app_rationale_31",
+      "label": "Adding a todo with empty title should not crash.",
+      "degree": 1
+    }
+  ],
+  "surprises": [],
+  "tokens": {
+    "input": 0,
+    "output": 0
+  }
+}

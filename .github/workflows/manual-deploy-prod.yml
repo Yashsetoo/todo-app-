@@ -1,0 +1,53 @@
+name: Manual Deploy to Prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      image-tag:
+        description: 'Docker image tag to deploy (e.g., abc123def456 from Dev)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  RESOURCE_GROUP: rg-myapp-cicd
+  ACR_LOGIN_SERVER: yashprojectreg2026.azurecr.io
+  IMAGE_NAME: myapp
+  PROD_WEBAPP_NAME: yash-python-app-prod
+
+jobs:
+  deploy-prod-manual:
+    name: Deploy to Prod (Manual)
+    runs-on: ubuntu-latest
+    environment: prod
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy image to Prod
+        uses: azure/arm-deploy@v2
+        with:
+          subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          resourceGroupName: ${{ env.RESOURCE_GROUP }}
+          template: main.bicep
+          parameters: >
+            webAppName=${{ env.PROD_WEBAPP_NAME }}
+            acrLoginServer=${{ env.ACR_LOGIN_SERVER }}
+            acrUsername=${{ secrets.ACR_USERNAME }}
+            acrPassword=${{ secrets.ACR_PASSWORD }}
+            imageName=${{ env.IMAGE_NAME }}
+            imageTag=${{ github.event.inputs.image-tag }}
+
+      - name: Deployment Summary
+        run: |
+          echo "✅ Prod Deployment Complete"
+          echo "Image: ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.image-tag }}"
+          echo "Prod App: ${{ env.PROD_WEBAPP_NAME }}"

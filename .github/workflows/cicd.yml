@@ -162,14 +162,10 @@ jobs:
           az webapp config container set \
             --name "$DEV_WEBAPP_NAME" \
             --resource-group "$RESOURCE_GROUP" \
-            --docker-custom-image-name "${{ needs.build.outputs.image-uri }}" \
-            --docker-registry-server-url "https://${ACR_LOGIN_SERVER}" \
-            --docker-registry-server-user "${{ secrets.ACR_USERNAME }}" \
-            --docker-registry-server-password "${{ secrets.ACR_PASSWORD }}"
-          az webapp config set \
-            --name "$DEV_WEBAPP_NAME" \
-            --resource-group "$RESOURCE_GROUP" \
-            --linux-fx-version "DOCKER|${{ needs.build.outputs.image-uri }}"
+            --container-image-name "${{ needs.build.outputs.image-uri }}" \
+            --container-registry-url "https://${ACR_LOGIN_SERVER}" \
+            --container-registry-user "${{ secrets.ACR_USERNAME }}" \
+            --container-registry-password "${{ secrets.ACR_PASSWORD }}"
           az webapp restart \
             --name "$DEV_WEBAPP_NAME" \
             --resource-group "$RESOURCE_GROUP"
@@ -194,14 +190,10 @@ jobs:
           az webapp config container set \
             --name "$PROD_WEBAPP_NAME" \
             --resource-group "$RESOURCE_GROUP" \
-            --docker-custom-image-name "${{ needs.build.outputs.image-uri }}" \
-            --docker-registry-server-url "https://${ACR_LOGIN_SERVER}" \
-            --docker-registry-server-user "${{ secrets.ACR_USERNAME }}" \
-            --docker-registry-server-password "${{ secrets.ACR_PASSWORD }}"
-          az webapp config set \
-            --name "$PROD_WEBAPP_NAME" \
-            --resource-group "$RESOURCE_GROUP" \
-            --linux-fx-version "DOCKER|${{ needs.build.outputs.image-uri }}"
+            --container-image-name "${{ needs.build.outputs.image-uri }}" \
+            --container-registry-url "https://${ACR_LOGIN_SERVER}" \
+            --container-registry-user "${{ secrets.ACR_USERNAME }}" \
+            --container-registry-password "${{ secrets.ACR_PASSWORD }}"
           az webapp restart \
             --name "$PROD_WEBAPP_NAME" \
             --resource-group "$RESOURCE_GROUP"

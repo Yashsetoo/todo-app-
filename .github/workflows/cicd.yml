@@ -166,6 +166,14 @@ jobs:
             --container-registry-url "https://${ACR_LOGIN_SERVER}" \
             --container-registry-user "${{ secrets.ACR_USERNAME }}" \
             --container-registry-password "${{ secrets.ACR_PASSWORD }}"
+          DEV_WEBAPP_ID=$(az webapp show \
+            --name "$DEV_WEBAPP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query id \
+            --output tsv)
+          az resource update \
+            --ids "${DEV_WEBAPP_ID}/config/web" \
+            --set properties.linuxFxVersion="DOCKER|${{ needs.build.outputs.image-uri }}"
           az webapp restart \
             --name "$DEV_WEBAPP_NAME" \
             --resource-group "$RESOURCE_GROUP"
@@ -194,6 +202,14 @@ jobs:
             --container-registry-url "https://${ACR_LOGIN_SERVER}" \
             --container-registry-user "${{ secrets.ACR_USERNAME }}" \
             --container-registry-password "${{ secrets.ACR_PASSWORD }}"
+          PROD_WEBAPP_ID=$(az webapp show \
+            --name "$PROD_WEBAPP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query id \
+            --output tsv)
+          az resource update \
+            --ids "${PROD_WEBAPP_ID}/config/web" \
+            --set properties.linuxFxVersion="DOCKER|${{ needs.build.outputs.image-uri }}"
           az webapp restart \
             --name "$PROD_WEBAPP_NAME" \
             --resource-group "$RESOURCE_GROUP"

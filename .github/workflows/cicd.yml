@@ -159,13 +159,14 @@ jobs:
 
       - name: Deploy same image to Dev
         run: |
-          az webapp config container set \
+          az webapp config appsettings set \
             --name "$DEV_WEBAPP_NAME" \
             --resource-group "$RESOURCE_GROUP" \
-            --container-image-name "${{ needs.build.outputs.image-uri }}" \
-            --container-registry-url "https://${ACR_LOGIN_SERVER}" \
-            --container-registry-user "${{ secrets.ACR_USERNAME }}" \
-            --container-registry-password "${{ secrets.ACR_PASSWORD }}"
+            --settings \
+              WEBSITES_PORT=8080 \
+              DOCKER_REGISTRY_SERVER_URL="https://${ACR_LOGIN_SERVER}" \
+              DOCKER_REGISTRY_SERVER_USERNAME="${{ secrets.ACR_USERNAME }}" \
+              DOCKER_REGISTRY_SERVER_PASSWORD="${{ secrets.ACR_PASSWORD }}"
           DEV_WEBAPP_ID=$(az webapp show \
             --name "$DEV_WEBAPP_NAME" \
             --resource-group "$RESOURCE_GROUP" \
@@ -195,13 +196,14 @@ jobs:
 
       - name: Deploy same image to Prod
         run: |
-          az webapp config container set \
+          az webapp config appsettings set \
             --name "$PROD_WEBAPP_NAME" \
             --resource-group "$RESOURCE_GROUP" \
-            --container-image-name "${{ needs.build.outputs.image-uri }}" \
-            --container-registry-url "https://${ACR_LOGIN_SERVER}" \
-            --container-registry-user "${{ secrets.ACR_USERNAME }}" \
-            --container-registry-password "${{ secrets.ACR_PASSWORD }}"
+            --settings \
+              WEBSITES_PORT=8080 \
+              DOCKER_REGISTRY_SERVER_URL="https://${ACR_LOGIN_SERVER}" \
+              DOCKER_REGISTRY_SERVER_USERNAME="${{ secrets.ACR_USERNAME }}" \
+              DOCKER_REGISTRY_SERVER_PASSWORD="${{ secrets.ACR_PASSWORD }}"
           PROD_WEBAPP_ID=$(az webapp show \
             --name "$PROD_WEBAPP_NAME" \
             --resource-group "$RESOURCE_GROUP" \

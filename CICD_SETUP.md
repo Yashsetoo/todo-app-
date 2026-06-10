@@ -17,8 +17,10 @@
 6. [Setup Instructions](#setup-instructions)
 7. [GitHub Configuration](#github-configuration)
 8. [Azure Configuration](#azure-configuration)
-9. [How It Works](#how-it-works)
-10. [Troubleshooting](#troubleshooting)
+9. [Your Workflow (Quick Start)](#your-workflow-quick-start)
+10. [Viewing Docker Images in ACR](#viewing-docker-images-in-acr)
+11. [How It Works](#how-it-works)
+12. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -656,6 +658,144 @@ git push origin v1.0.0
 1. **Develop branch** = Auto-deploy daily to Dev
 2. **Manual trigger** = Deploy any Dev image to Prod (2-3 days later)
 3. **No rebuilds** = Same image, every time
+
+---
+
+## Viewing Docker Images in ACR
+
+When using the **"Manual Deploy to Prod"** workflow, you need to know which image tags are available. Here's how to view all your Docker images:
+
+### Method 1: Azure Portal (Easiest) 🖥️
+
+1. Go to **[Azure Portal](https://portal.azure.com)**
+2. Search for **"Container Registries"**
+3. Click **yashprojectreg2026**
+4. In the left menu, click **Repositories**
+5. Click **myapp**
+6. You'll see all available image tags:
+
+```
+Repositories
+└─ myapp
+   ├─ bcd87dd      ← Latest (from your recent push)
+   ├─ abc123d      ← From 2 days ago
+   ├─ def456g      ← From 5 days ago
+   └─ ...
+```
+
+Each tag is the **Git commit SHA** (short form).
+
+**To deploy this image:**
+- Copy the tag (e.g., `bcd87dd`)
+- Go to GitHub → Actions → Manual Deploy to Prod
+- Click "Run workflow" → Enter tag → Run workflow
+
+---
+
+### Method 2: Azure CLI
+
+**View all images ordered by most recent:**
+
+```bash
+az acr repository show-manifests \
+  --name yashprojectreg2026 \
+  --repository myapp \
+  --orderby time_desc \
+  --top 10
+```
+
+**Output:**
+```json
+[
+  {
+    "digest": "sha256:abc123...",
+    "tags": ["bcd87dd"],              ← Use this tag!
+    "timestamp": "2026-06-10T15:30Z"
+  },
+  {
+    "digest": "sha256:def456...",
+    "tags": ["abc123d"],              ← Or this tag
+    "timestamp": "2026-06-10T10:15Z"
+  }
+]
+```
+
+---
+
+### Method 3: GitHub Actions (Workflow Output)
+
+After each build, GitHub logs show the image:
+
+1. Go to **GitHub** → **Actions** tab
+2. Click **"Build Once Deploy Many"** workflow
+3. Click the latest successful run
+4. Click **build** job
+5. Expand **"Deploy image to Prod"** step (or similar)
+6. Look for log output like:
+
+```
+Docker image pushed:
+yashprojectreg2026.azurecr.io/myapp:bcd87dd
+```
+
+The tag after the colon (`:bcd87dd`) is what you use in Manual Deploy.
+
+---
+
+### How Image Tags Work
+
+Each time you push to `develop` or `main`:
+
+```
+Commit SHA: bcd87ddabc123def456789abcdef123456789abc
+                ↓ (Short form - 7 characters)
+Image tag: bcd87dd
+```
+
+So:
+- **Day 1 push** → Image tag: `bcd87dd`
+- **Day 2 push** → Image tag: `abc123d`
+- **Day 3 push** → Image tag: `def456g`
+
+Each is a **complete, immutable Docker image** stored in ACR.
+
+---
+
+### Example: Deploy Day 1 Image on Day 4
+
+**Day 1:**
+```bash
+git push origin develop
+# Image bcd87dd built and deployed to Dev
+```
+
+**Day 4:**
+```
+GitHub UI:
+Actions → Manual Deploy to Prod → Run workflow
+Input: bcd87dd
+Click: Run workflow
+Click: Approve when prompted
+Result: Prod now runs bcd87dd (SAME image, no rebuild!)
+```
+
+---
+
+### Cleanup (Optional)
+
+**If ACR is full, delete old images:**
+
+```bash
+# Delete a specific image tag
+az acr repository delete \
+  --name yashprojectreg2026 \
+  --image myapp:bcd87dd
+
+# Or keep only the last 10 images
+# (Requires Premium tier for retention policy)
+```
+
+For now, keep all images - they're cheap storage! 📦
 
 ---
 

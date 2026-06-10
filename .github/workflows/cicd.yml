@@ -166,6 +166,13 @@ jobs:
             --docker-registry-server-url "https://${ACR_LOGIN_SERVER}" \
             --docker-registry-server-user "${{ secrets.ACR_USERNAME }}" \
             --docker-registry-server-password "${{ secrets.ACR_PASSWORD }}"
+          az webapp config set \
+            --name "$DEV_WEBAPP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --linux-fx-version "DOCKER|${{ needs.build.outputs.image-uri }}"
+          az webapp restart \
+            --name "$DEV_WEBAPP_NAME" \
+            --resource-group "$RESOURCE_GROUP"
 
   deploy-prod:
     name: Deploy Prod
@@ -191,3 +198,10 @@ jobs:
             --docker-registry-server-url "https://${ACR_LOGIN_SERVER}" \
             --docker-registry-server-user "${{ secrets.ACR_USERNAME }}" \
             --docker-registry-server-password "${{ secrets.ACR_PASSWORD }}"
+          az webapp config set \
+            --name "$PROD_WEBAPP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --linux-fx-version "DOCKER|${{ needs.build.outputs.image-uri }}"
+          az webapp restart \
+            --name "$PROD_WEBAPP_NAME" \
+            --resource-group "$RESOURCE_GROUP"

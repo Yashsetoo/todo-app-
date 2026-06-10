@@ -16,7 +16,7 @@ permissions:
 
 env:
   RESOURCE_GROUP: rg-myapp-cicd
-  LOCATION: centralus
+  LOCATION: centralindia
   ACR_NAME: yashprojectreg2026
   ACR_LOGIN_SERVER: yashprojectreg2026.azurecr.io
   IMAGE_NAME: myapp

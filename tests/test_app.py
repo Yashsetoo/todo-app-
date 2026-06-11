@@ -13,6 +13,11 @@ def client():
         yield client 
 
  
+def test_health(client):
+    """Health endpoint should return 200."""
+    response = client.get('/health')
+    assert response.status_code == 200
+
 def test_index_loads(client): 
     """Home page should return 200.""" 
     response = client.get('/') 

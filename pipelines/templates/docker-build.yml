@@ -1,0 +1,98 @@
+# Reusable template: build Docker image, Trivy scan, optional push to ACR.
+parameters:
+  - name: pushImage
+    type: boolean
+    default: true
+  - name: imageTags
+    type: object
+    default: []
+  - name: acrServiceConnection
+    type: string
+    default: ''
+  - name: runTrivyScan
+    type: boolean
+    default: true
+
+steps:
+  - task: UsePythonVersion@0
+    displayName: 'Use Python 3.11 (app-type detection)'
+    inputs:
+      versionSpec: '3.11'
+    condition: succeeded()
+
+  - script: |
+      echo "##vso[task.setvariable variable=APP_TYPE]python"
+      if [ -f "Dockerfile" ]; then
+        echo "##vso[task.setvariable variable=HAS_DOCKERFILE]true"
+      else
+        echo "##vso[task.setvariable variable=HAS_DOCKERFILE]false"
+      fi
+      if [ -f "requirements.txt" ]; then
+        echo "##vso[task.setvariable variable=TEST_COMMAND]pytest tests/ -v --tb=short"
+      elif [ -f "package.json" ]; then
+        echo "##vso[task.setvariable variable=TEST_COMMAND]npm test"
+      elif find . -maxdepth 2 -name "*.csproj" | grep -q .; then
+        echo "##vso[task.setvariable variable=TEST_COMMAND]dotnet test"
+      else
+        echo "##vso[task.setvariable variable=TEST_COMMAND]echo No tests configured"
+      fi
+    displayName: 'Detect application type'
+
+  - script: |
+      python -m pip install --upgrade pip
+      pip install -r requirements.txt
+    displayName: 'Install Python dependencies'
+    condition: eq(variables['APP_TYPE'], 'python')
+
+  - script: $(TEST_COMMAND)
+    displayName: 'Run unit tests'
+    condition: ne(variables['TEST_COMMAND'], 'echo No tests configured')
+
+  - task: Docker@2
+    displayName: 'Build Docker image'
+    inputs:
+      containerRegistry: ${{ parameters.acrServiceConnection }}
+      repository: $(imageRepository)
+      command: build
+      Dockerfile: '**/Dockerfile'
+      tags: |
+        $(Build.BuildId)
+        latest-dev
+      arguments: '--build-arg BUILDKIT_INLINE_CACHE=1'
+    condition: eq(variables['HAS_DOCKERFILE'], 'true')
+
+  # Trivy scan runs on the locally built image before any registry push.
+  - script: |
+      set -euo pipefail
+      TRIVY_VERSION="0.58.1"
+      curl -sfL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
+        | tar -xz -C /tmp
+      sudo mv /tmp/trivy /usr/local/bin/trivy
+      IMAGE_REF="$(imageRepository):$(Build.BuildId)"
+      echo "Scanning ${IMAGE_REF} for HIGH and CRITICAL CVEs..."
+      trivy image \
+        --severity HIGH,CRITICAL \
+        --exit-code 1 \
+        --no-progress \
+        --format table \
+        "${IMAGE_REF}"
+    displayName: 'Trivy vulnerability scan (fail on HIGH/CRITICAL)'
+    condition: and(succeeded(), eq('${{ parameters.runTrivyScan }}', 'true'), eq(variables['HAS_DOCKERFILE'], 'true'))
+
+  - task: Docker@2
+    displayName: 'Push Docker image to ACR'
+    condition: and(succeeded(), eq('${{ parameters.pushImage }}', 'true'), eq(variables['HAS_DOCKERFILE'], 'true'))
+    inputs:
+      containerRegistry: ${{ parameters.acrServiceConnection }}
+      repository: $(imageRepository)
+      command: push
+      tags: |
+        $(Build.BuildId)
+        latest-dev
+
+  - script: |
+      echo "##vso[task.setvariable variable=IMAGE_TAG;isOutput=true]$(Build.BuildId)"
+      echo "##vso[task.setvariable variable=IMAGE_URI;isOutput=true]$(ACR_DEV_LOGIN_SERVER)/$(imageRepository):$(Build.BuildId)"
+    name: imageMeta
+    displayName: 'Export image metadata'
+    condition: succeeded()

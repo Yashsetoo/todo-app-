@@ -1,0 +1,55 @@
+# Reusable template: deploy container image to AKS using KubernetesManifest@1.
+parameters:
+  - name: environment
+    type: string
+  - name: kubernetesServiceConnection
+    type: string
+  - name: namespace
+    type: string
+  - name: acrLoginServer
+    type: string
+  - name: imageTag
+    type: string
+    default: '$(Build.BuildId)'
+  - name: deploymentName
+    type: string
+    default: 'myapp'
+  - name: healthUrl
+    type: string
+    default: ''
+
+steps:
+  - checkout: self
+
+  - task: KubernetesManifest@1
+    displayName: 'Deploy to AKS (${{ parameters.namespace }})'
+    inputs:
+      action: deploy
+      kubernetesServiceConnection: ${{ parameters.kubernetesServiceConnection }}
+      namespace: ${{ parameters.namespace }}
+      manifests: |
+        infra/k8s/deployment.yaml
+        infra/k8s/service.yaml
+      containers: |
+        $(imageRepository)=${{ parameters.acrLoginServer }}/$(imageRepository):${{ parameters.imageTag }}
+
+  - script: |
+      set -euo pipefail
+      if [ -z "${{ parameters.healthUrl }}" ]; then
+        echo "No health URL configured; skipping smoke test."
+        exit 0
+      fi
+      echo "Smoke test: GET ${{ parameters.healthUrl }}"
+      for i in $(seq 1 12); do
+        STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ parameters.healthUrl }}" || true)
+        if [ "$STATUS" = "200" ]; then
+          echo "Health check passed (HTTP 200)."
+          exit 0
+        fi
+        echo "Attempt $i: HTTP $STATUS — retrying in 10s..."
+        sleep 10
+      done
+      echo "##vso[task.logissue type=error]Smoke test failed after 12 attempts."
+      exit 1
+    displayName: 'Smoke test (/health)'
+    condition: ne('${{ parameters.healthUrl }}', '')

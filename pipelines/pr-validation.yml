@@ -1,0 +1,69 @@
+# PR validation pipeline — attach as a Build Validation policy on the `develop` branch.
+# Runs: unit tests, lint placeholder, Docker build (no push).
+trigger: none
+
+pr:
+  branches:
+    include:
+      - develop
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  - name: imageRepository
+    value: $[ replace(lower(variables['Build.Repository.Name']), ' ', '-') ]
+
+stages:
+  - stage: PR_Validate
+    displayName: 'PR Validation'
+    jobs:
+      - job: Validate
+        displayName: 'Test, lint, and build'
+        steps:
+          - checkout: self
+            fetchDepth: 0
+
+          - task: UsePythonVersion@0
+            displayName: 'Use Python 3.11'
+            inputs:
+              versionSpec: '3.11'
+
+          - script: |
+              python -m pip install --upgrade pip
+              pip install -r requirements.txt
+              pip install ruff
+            displayName: 'Install dependencies'
+            condition: succeeded()
+
+          - script: pytest tests/ -v --tb=short
+            displayName: 'Unit tests (pytest)'
+            condition: succeeded()
+
+          # Static analysis placeholder — extend with SonarQube, CodeQL, etc.
+          - script: |
+              ruff check . --select E,F,W --ignore E501 || true
+              echo "Lint step complete (non-blocking placeholder; set to fail on error when ready)."
+            displayName: 'Lint / static analysis (ruff placeholder)'
+
+          - task: Docker@2
+            displayName: 'Docker build (no push)'
+            inputs:
+              command: build
+              Dockerfile: '**/Dockerfile'
+              repository: $(imageRepository)
+              tags: |
+                pr-$(System.PullRequest.PullRequestId)
+              arguments: '--build-arg BUILDKIT_INLINE_CACHE=1'
+
+          - script: |
+              TRIVY_VERSION="0.58.1"
+              curl -sfL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
+                | tar -xz -C /tmp
+              sudo mv /tmp/trivy /usr/local/bin/trivy
+              trivy image \
+                --severity HIGH,CRITICAL \
+                --exit-code 1 \
+                --no-progress \
+                "$(imageRepository):pr-$(System.PullRequest.PullRequestId)"
+            displayName: 'Trivy scan PR image (fail on HIGH/CRITICAL)'

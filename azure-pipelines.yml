@@ -1,0 +1,299 @@
+# Multi-environment CI/CD: develop -> dev -> (approve) uat -> (approve) prod
+# Toggle deployment target with pipeline variable USE_AKS (true = AKS, false = App Service).
+#
+# Azure DevOps project: Build Once Deploy Many
+# Organization:         yashjadhav0526
+# Resource group:       rg-myapp-cicd
+
+trigger:
+  branches:
+    include:
+      - develop
+
+pr: none
+
+pool:
+  vmImage: ubuntu-latest
+
+parameters:
+  - name: USE_AKS
+    displayName: 'Deploy to AKS (false = App Service)'
+    type: boolean
+    default: false
+
+variables:
+  - group: vg-dev
+  - group: vg-uat
+  - group: vg-prod
+  - name: USE_AKS
+    value: ${{ parameters.USE_AKS }}
+  # Docker tags cannot contain spaces; sanitize repository name.
+  - name: imageRepository
+    value: $[ replace(lower(variables['Build.Repository.Name']), ' ', '-') ]
+  - name: azureServiceConnection
+    value: 'sc-azure-rm'
+  - name: resourceGroup
+    value: 'rg-myapp-cicd'
+
+stages:
+  # ── CI: Build once, push to ACR-DEV ───────────────────────────────────────
+  - stage: Build
+    displayName: 'CI — Build & Push to ACR-DEV'
+    jobs:
+      - job: BuildImage
+        displayName: 'Build, scan, push'
+        steps:
+          - checkout: self
+            fetchDepth: 0
+
+          - template: pipelines/templates/docker-build.yml
+            parameters:
+              pushImage: true
+              acrServiceConnection: 'sc-acr-dev'
+              runTrivyScan: true
+
+          - script: |
+              mkdir -p "$(Build.ArtifactStagingDirectory)/meta"
+              cat > "$(Build.ArtifactStagingDirectory)/meta/build.json" <<EOF
+              {
+                "buildId": "$(Build.BuildId)",
+                "imageRepository": "$(imageRepository)",
+                "imageTag": "$(Build.BuildId)",
+                "imageUriDev": "$(ACR_DEV_LOGIN_SERVER)/$(imageRepository):$(Build.BuildId)",
+                "sourceBranch": "$(Build.SourceBranch)",
+                "sourceVersion": "$(Build.SourceVersion)"
+              }
+              EOF
+            displayName: 'Write build metadata JSON'
+
+          - publish: $(Build.ArtifactStagingDirectory)/meta
+            artifact: image-metadata
+            displayName: 'Publish image tag artifact'
+
+  # ── CD: Deploy to Dev (no approval) ─────────────────────────────────────
+  - stage: Deploy_Dev
+    displayName: 'CD — Deploy Dev'
+    dependsOn: Build
+    condition: succeeded()
+    variables:
+      - group: vg-dev
+    jobs:
+      - deployment: DeployDev
+        displayName: 'Deploy to dev environment'
+        environment: dev
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: none
+
+                - ${{ if eq(parameters.USE_AKS, true) }}:
+                  - template: pipelines/templates/deploy-aks.yml
+                    parameters:
+                      environment: dev
+                      kubernetesServiceConnection: 'sc-aks-dev'
+                      namespace: '$(KUBE_NAMESPACE_DEV)'
+                      acrLoginServer: '$(ACR_DEV_LOGIN_SERVER)'
+                      imageTag: '$(Build.BuildId)'
+                      healthUrl: '$(DEV_HEALTH_URL)'
+
+                - ${{ if eq(parameters.USE_AKS, false) }}:
+                  - template: pipelines/templates/deploy-appservice.yml
+                    parameters:
+                      environment: dev
+                      azureServiceConnection: '$(azureServiceConnection)'
+                      appName: '$(APP_NAME_DEV)'
+                      resourceGroup: '$(resourceGroup)'
+                      slotName: ''
+                      acrLoginServer: '$(ACR_DEV_LOGIN_SERVER)'
+                      imageTag: '$(Build.BuildId)'
+                      healthUrl: '$(DEV_HEALTH_URL)'
+
+  # ── Approval gate: Dev -> UAT ─────────────────────────────────────────────
+  - stage: Promote_UAT
+    displayName: 'Promote to ACR-UAT'
+    dependsOn: Deploy_Dev
+    condition: succeeded()
+    variables:
+      - group: vg-dev
+      - group: vg-uat
+    jobs:
+      - deployment: ApproveUAT
+        displayName: 'UAT approval & image promotion'
+        environment: uat
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: none
+
+                - template: pipelines/templates/acr-promote.yml
+                  parameters:
+                    sourceAcrLoginServer: '$(ACR_DEV_LOGIN_SERVER)'
+                    sourceAcrName: '$(ACR_DEV_NAME)'
+                    destAcrLoginServer: '$(ACR_UAT_LOGIN_SERVER)'
+                    destAcrName: '$(ACR_UAT_NAME)'
+                    imageTag: '$(Build.BuildId)'
+                    azureServiceConnection: '$(azureServiceConnection)'
+
+  - stage: Deploy_UAT
+    displayName: 'CD — Deploy UAT'
+    dependsOn: Promote_UAT
+    condition: succeeded()
+    variables:
+      - group: vg-uat
+    jobs:
+      - deployment: DeployUAT
+        displayName: 'Deploy to uat environment'
+        environment: uat
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: none
+
+                - ${{ if eq(parameters.USE_AKS, true) }}:
+                  - template: pipelines/templates/deploy-aks.yml
+                    parameters:
+                      environment: uat
+                      kubernetesServiceConnection: 'sc-aks-uat'
+                      namespace: '$(KUBE_NAMESPACE_UAT)'
+                      acrLoginServer: '$(ACR_UAT_LOGIN_SERVER)'
+                      imageTag: '$(Build.BuildId)'
+                      healthUrl: '$(UAT_HEALTH_URL)'
+
+                - ${{ if eq(parameters.USE_AKS, false) }}:
+                  - template: pipelines/templates/deploy-appservice.yml
+                    parameters:
+                      environment: uat
+                      azureServiceConnection: '$(azureServiceConnection)'
+                      appName: '$(APP_NAME_UAT)'
+                      resourceGroup: '$(resourceGroup)'
+                      slotName: ''
+                      acrLoginServer: '$(ACR_UAT_LOGIN_SERVER)'
+                      imageTag: '$(Build.BuildId)'
+                      healthUrl: '$(UAT_HEALTH_URL)'
+
+                # Integration test placeholder — replace with Postman/Newman, Playwright, etc.
+                - script: |
+                    echo "Running UAT integration test placeholder..."
+                    curl -sf "$(UAT_HEALTH_URL)" -o /dev/null -w "UAT health: %{http_code}\n"
+                    echo "Integration tests passed (placeholder)."
+                  displayName: 'UAT integration tests (placeholder)'
+                  condition: ne(variables['UAT_HEALTH_URL'], '')
+
+  # ── Approval gate: UAT -> Prod ────────────────────────────────────────────
+  - stage: Promote_Prod
+    displayName: 'Promote to ACR-PROD'
+    dependsOn: Deploy_UAT
+    condition: succeeded()
+    variables:
+      - group: vg-uat
+      - group: vg-prod
+    jobs:
+      - deployment: ApproveProd
+        displayName: 'Prod approval, window check & promotion'
+        environment: prod
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: none
+
+                # Prod deployments allowed Mon–Fri 09:00–18:00 UTC only.
+                - script: |
+                    set -euo pipefail
+                    DOW=$(date -u +%u)
+                    HOUR=$(date -u +%H)
+                    if [ "$DOW" -gt 5 ]; then
+                      echo "##vso[task.logissue type=error]Prod deployments blocked on weekends (UTC)."
+                      exit 1
+                    fi
+                    if [ "$HOUR" -lt 9 ] || [ "$HOUR" -ge 18 ]; then
+                      echo "##vso[task.logissue type=error]Prod deployments allowed Mon–Fri 09:00–18:00 UTC only."
+                      exit 1
+                    fi
+                    echo "Deployment window check passed (UTC)."
+                  displayName: 'Prod deployment window check'
+
+                - template: pipelines/templates/acr-promote.yml
+                  parameters:
+                    sourceAcrLoginServer: '$(ACR_UAT_LOGIN_SERVER)'
+                    sourceAcrName: '$(ACR_UAT_NAME)'
+                    destAcrLoginServer: '$(ACR_PROD_LOGIN_SERVER)'
+                    destAcrName: '$(ACR_PROD_NAME)'
+                    imageTag: '$(Build.BuildId)'
+                    azureServiceConnection: '$(azureServiceConnection)'
+                    sourceAcrUsername: '$(ACR_UAT_USERNAME)'
+                    sourceAcrPassword: '$(ACR_UAT_PASSWORD)'
+
+  - stage: Deploy_Prod
+    displayName: 'CD — Deploy Prod'
+    dependsOn: Promote_Prod
+    condition: succeeded()
+    variables:
+      - group: vg-prod
+    jobs:
+      - deployment: DeployProd
+        displayName: 'Deploy to prod environment'
+        environment: prod
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: none
+
+                - ${{ if eq(parameters.USE_AKS, true) }}:
+                  - template: pipelines/templates/deploy-aks.yml
+                    parameters:
+                      environment: prod
+                      kubernetesServiceConnection: 'sc-aks-prod'
+                      namespace: '$(KUBE_NAMESPACE_PROD)'
+                      acrLoginServer: '$(ACR_PROD_LOGIN_SERVER)'
+                      imageTag: '$(Build.BuildId)'
+                      healthUrl: '$(PROD_HEALTH_URL)'
+
+                - ${{ if eq(parameters.USE_AKS, false) }}:
+                  - template: pipelines/templates/deploy-appservice.yml
+                    parameters:
+                      environment: prod
+                      azureServiceConnection: '$(azureServiceConnection)'
+                      appName: '$(APP_NAME_PROD)'
+                      resourceGroup: '$(resourceGroup)'
+                      slotName: ''
+                      acrLoginServer: '$(ACR_PROD_LOGIN_SERVER)'
+                      imageTag: '$(Build.BuildId)'
+                      healthUrl: '$(PROD_HEALTH_URL)'
+
+                - script: |
+                    set -euo pipefail
+                    ORG="yashjadhav0526"
+                    PROJECT="Build Once Deploy Many"
+                    PR_ID="$(System.PullRequest.PullRequestId)"
+                    if [ -z "$PR_ID" ] || [ "$PR_ID" = "null" ]; then
+                      echo "No PR context on this run; skipping PR comment."
+                      exit 0
+                    fi
+                    BODY=$(cat <<EOF
+                    ## Production deployment summary
+
+                    | Field | Value |
+                    |-------|-------|
+                    | Build | $(Build.BuildNumber) |
+                    | Image | $(ACR_PROD_LOGIN_SERVER)/$(imageRepository):$(Build.BuildId) |
+                    | Commit | $(Build.SourceVersion) |
+                    | Deployed (UTC) | $(date -u +"%Y-%m-%d %H:%M:%S") |
+                    | Environment | prod |
+
+                    Deployed via Azure Pipelines after UAT approval.
+                    EOF
+                    )
+                    ENC_BODY=$(python3 -c "import json,sys; print(json.dumps({'comments':[{'parentCommentId':0,'content':sys.stdin.read(),'commentType':1}]}))" <<< "$BODY")
+                    curl -sS -X POST \
+                      -H "Content-Type: application/json" \
+                      -H "Authorization: Bearer $(System.AccessToken)" \
+                      -d "$ENC_BODY" \
+                      "https://dev.azure.com/${ORG}/${PROJECT// /%20}/_apis/git/repositories/$(Build.Repository.ID)/pullRequests/${PR_ID}/threads?api-version=7.1"
+                  displayName: 'Post deployment summary to PR'
+                  env:
+                    SYSTEM_ACCESSTOKEN: $(System.AccessToken)

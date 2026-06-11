@@ -1,0 +1,75 @@
+[
+  {
+    "_comment": "Require a minimum number of reviewers (blocks merge without approval).",
+    "endpoint": "POST https://dev.azure.com/yashjadhav0526/{project-id}/_apis/policy/configurations?api-version=7.1",
+    "body": {
+      "isEnabled": true,
+      "isBlocking": true,
+      "type": {
+        "id": "fa4e907d-c16b-4a4c-8dfa-4916e5d171ab"
+      },
+      "settings": {
+        "minimumApproverCount": 1,
+        "creatorVoteCounts": false,
+        "allowDownvotes": false,
+        "resetOnSourcePush": true,
+        "requireVoteOnLastIteration": true,
+        "resetRejectionsOnSourcePush": true,
+        "blockLastPusherVote": true,
+        "scope": [
+          {
+            "repositoryId": "{repo-id}",
+            "refName": "refs/heads/develop",
+            "matchKind": "exact"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "_comment": "Build validation — PR validation pipeline must pass before merge.",
+    "endpoint": "POST https://dev.azure.com/yashjadhav0526/{project-id}/_apis/policy/configurations?api-version=7.1",
+    "body": {
+      "isEnabled": true,
+      "isBlocking": true,
+      "type": {
+        "id": "b2b1f2c7-0d98-49e0-8292-806e1711602a"
+      },
+      "settings": {
+        "buildDefinitionId": "{pr-validation-pipeline-id}",
+        "queueOnSourceUpdateOnly": true,
+        "manualQueueOnly": false,
+        "displayName": "PR Validation — pipelines/pr-validation.yml",
+        "validDuration": 720,
+        "scope": [
+          {
+            "repositoryId": "{repo-id}",
+            "refName": "refs/heads/develop",
+            "matchKind": "exact"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "_comment": "Limit merge types — require squash or merge commit (optional governance).",
+    "endpoint": "POST https://dev.azure.com/yashjadhav0526/{project-id}/_apis/policy/configurations?api-version=7.1",
+    "body": {
+      "isEnabled": true,
+      "isBlocking": true,
+      "type": {
+        "id": "0c04001d-5947-4bed-8574-e61955ee9997"
+      },
+      "settings": {
+        "useSquashMerge": true,
+        "scope": [
+          {
+            "repositoryId": "{repo-id}",
+            "refName": "refs/heads/develop",
+            "matchKind": "exact"
+          }
+        ]
+      }
+    }
+  }
+]

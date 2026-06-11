@@ -33,6 +33,10 @@ class Todo(db.Model):
         }
 
 # ── Routes ─────────────────────────────────────────────────
+@app.route('/health')
+def health():
+    return jsonify({'status': 'healthy'}), 200
+
 @app.route('/')
 def index():
     filter_by = request.args.get('filter', 'all')

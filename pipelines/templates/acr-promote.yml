@@ -1,0 +1,43 @@
+# Reusable template: promote an immutable image tag between ACR instances.
+# Uses `az acr import` so agents only need AcrPush on the destination registry.
+parameters:
+  - name: sourceAcrLoginServer
+    type: string
+  - name: sourceAcrName
+    type: string
+  - name: destAcrLoginServer
+    type: string
+  - name: destAcrName
+    type: string
+  - name: imageTag
+    type: string
+    default: '$(Build.BuildId)'
+  - name: azureServiceConnection
+    type: string
+  - name: sourceAcrUsername
+    type: string
+    default: '$(ACR_SOURCE_USERNAME)'
+  - name: sourceAcrPassword
+    type: string
+    default: '$(ACR_SOURCE_PASSWORD)'
+
+steps:
+  - task: AzureCLI@2
+    displayName: 'Promote image to ${{ parameters.destAcrName }}'
+    inputs:
+      azureSubscription: ${{ parameters.azureServiceConnection }}
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        set -euo pipefail
+        SOURCE="${{ parameters.sourceAcrLoginServer }}/$(imageRepository):${{ parameters.imageTag }}"
+        DEST_TAG="$(imageRepository):${{ parameters.imageTag }}"
+        echo "Importing ${SOURCE} -> ${{ parameters.destAcrName }}/${DEST_TAG}"
+        az acr import \
+          --name "${{ parameters.destAcrName }}" \
+          --source "${SOURCE}" \
+          --image "${DEST_TAG}" \
+          --username "${{ parameters.sourceAcrUsername }}" \
+          --password "${{ parameters.sourceAcrPassword }}" \
+          --force
+        echo "##vso[task.setvariable variable=PROMOTED_IMAGE_URI]${{ parameters.destAcrLoginServer }}/${DEST_TAG}"

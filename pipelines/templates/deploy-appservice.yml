@@ -1,0 +1,54 @@
+# Reusable template: deploy container image to Azure App Service (optionally a slot).
+parameters:
+  - name: environment
+    type: string
+  - name: azureServiceConnection
+    type: string
+  - name: appName
+    type: string
+  - name: resourceGroup
+    type: string
+    default: 'rg-myapp-cicd'
+  - name: slotName
+    type: string
+    default: ''
+  - name: acrLoginServer
+    type: string
+  - name: imageTag
+    type: string
+    default: '$(Build.BuildId)'
+  - name: healthUrl
+    type: string
+    default: ''
+
+steps:
+  - task: AzureWebAppContainer@1
+    displayName: 'Deploy container to App Service'
+    inputs:
+      azureSubscription: ${{ parameters.azureServiceConnection }}
+      appName: ${{ parameters.appName }}
+      resourceGroupName: ${{ parameters.resourceGroup }}
+      deployToSlotOrASE: ${{ ne(parameters.slotName, '') }}
+      slotName: ${{ parameters.slotName }}
+      containers: '${{ parameters.acrLoginServer }}/$(imageRepository):${{ parameters.imageTag }}'
+
+  - script: |
+      set -euo pipefail
+      if [ -z "${{ parameters.healthUrl }}" ]; then
+        echo "No health URL configured; skipping smoke test."
+        exit 0
+      fi
+      echo "Smoke test: GET ${{ parameters.healthUrl }}"
+      for i in $(seq 1 12); do
+        STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ parameters.healthUrl }}" || true)
+        if [ "$STATUS" = "200" ]; then
+          echo "Health check passed (HTTP 200)."
+          exit 0
+        fi
+        echo "Attempt $i: HTTP $STATUS — retrying in 10s..."
+        sleep 10
+      done
+      echo "##vso[task.logissue type=error]Smoke test failed after 12 attempts."
+      exit 1
+    displayName: 'Smoke test (/health)'
+    condition: ne('${{ parameters.healthUrl }}', '')
